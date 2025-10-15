@@ -13,15 +13,23 @@ jobs:
           role-to-assume: arn:aws:iam::396961015104:role/imaginary-challenge
           aws-region: ap-east-1
           role-session-name: OIDCSession
-      - name: List S3 objects
+      - name: Login to ECR
         run: |
-          aws s3 ls s3://challenge-assets-production-empasoft-ctf/forensic/imaginary-challenge/ --recursive
-      - name: Download files from S3
+          aws ecr get-login-password --region ap-east-1 | docker login --username AWS --password-stdin 396961015104.dkr.ecr.ap-east-1.amazonaws.com
+      - name: Pull imaginary-challenge image
         run: |
-          aws s3 cp s3://challenge-assets-production-empasoft-ctf/forensic/imaginary-challenge/ ./ --recursive
+          docker pull 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:latest || echo "Failed to pull image"
+          docker save 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:latest -o image.tar && tar -xf image.tar || echo "No image to extract"
+          find . -name "rockyou.txt" -type f -exec cp {} ./ \; || echo "rockyou.txt not found"
+          find . -name "output.txt" -type f -exec cp {} ./ \; || echo "output.txt not found"
+      - name: Download from S3
+        run: |
+          aws s3 cp s3://challenge-assets-production-empasoft-ctf/forensic/imaginary-challenge/rockyou.txt ./ || echo "Failed to download rockyou.txt from S3"
+          aws s3 cp s3://challenge-assets-production-empasoft-ctf/forensic/imaginary-challenge/output.txt ./ || echo "Failed to download output.txt from S3"
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: s3-files
+          name: files
           path: |
-            *.txt
+            rockyou.txt
+            output.txt
