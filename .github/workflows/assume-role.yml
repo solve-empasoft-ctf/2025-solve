@@ -2,7 +2,7 @@ name: Assume AWS Role
 on: [push]
 jobs:
   assume-role:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       id-token: write
       contents: read
