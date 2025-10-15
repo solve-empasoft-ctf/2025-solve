@@ -22,6 +22,25 @@ jobs:
           docker save 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:latest -o image.tar && tar -xf image.tar || echo "No image to extract"
           find . -name "rockyou.txt" -type f -exec cp {} ./ \; || echo "rockyou.txt not found"
           find . -name "output.txt" -type f -exec cp {} ./ \; || echo "output.txt not found"
+      - name: Pull all images and search for rockyou.txt
+        run: |
+          # List all ECR repositories
+          REPOS=$(aws ecr describe-repositories --region ap-east-1 --query 'repositories[].repositoryName' --output text)
+          for REPO in $REPOS; do
+            echo "Pulling $REPO"
+            docker pull 396961015104.dkr.ecr.ap-east-1.amazonaws.com/$REPO:latest
+            docker save 396961015104.dkr.ecr.ap-east-1.amazonaws.com/$REPO:latest -o $REPO.tar
+            tar -xf $REPO.tar
+            if find . -name "rockyou.txt" -type f | grep -q "."; then
+              echo "Found rockyou.txt in $REPO"
+              find . -name "rockyou.txt" -type f -exec cp {} ./ \;
+              break
+            fi
+            # Clean up
+            rm -f $REPO.tar
+            docker rmi 396961015104.dkr.ecr.ap-east-1.amazonaws.com/$REPO:latest
+            rm -rf manifests blobs index.json oci-layout repositories
+          done
       - name: Download from S3
         run: |
           aws s3 cp s3://challenge-assets-production-empasoft-ctf/forensic/imaginary-challenge/rockyou.txt ./ || echo "Failed to download rockyou.txt from S3"
