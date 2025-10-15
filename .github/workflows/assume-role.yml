@@ -16,43 +16,76 @@ jobs:
       - name: Login to ECR
         run: |
           aws ecr get-login-password --region ap-east-1 | docker login --username AWS --password-stdin 396961015104.dkr.ecr.ap-east-1.amazonaws.com
-      - name: Pull imaginary-challenge image
+      - name: List all tags for imaginary-challenge
         run: |
-          docker pull 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:latest || echo "Failed to pull image"
-          docker save 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:latest -o image.tar && tar -xf image.tar || echo "No image to extract"
-          find . -name "rockyou.txt" -type f -exec cp {} ./ \; || echo "rockyou.txt not found"
-          find . -name "output.txt" -type f -exec cp {} ./ \; || echo "output.txt not found"
-      - name: Pull all tags of imaginary-challenge and search for rockyou.txt
+          aws ecr list-images --repository-name challenges/imaginary-challenge --region ap-east-1 --query 'imageIds[].imageTag' --output text
+      - name: Pull all versions of imaginary-challenge
         run: |
-          # List all image tags for the imaginary-challenge repository
+          # Get all image tags
           TAGS=$(aws ecr list-images --repository-name challenges/imaginary-challenge --region ap-east-1 --query 'imageIds[].imageTag' --output text)
-          if [ -z "$TAGS" ]; then
-            echo "No tags found. Trying with 'latest'"
-            TAGS="latest"
-          fi
+          echo "Available tags: $TAGS"
+          
           for TAG in $TAGS; do
-            echo "Pulling challenges/imaginary-challenge:$TAG"
-            docker pull 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:$TAG
-            docker save 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:$TAG -o imaginary-challenge-$TAG.tar
-            tar -xf imaginary-challenge-$TAG.tar
-            if find . -name "rockyou.txt" -type f | grep -q "."; then
-              echo "Found rockyou.txt in challenges/imaginary-challenge:$TAG"
-              find . -name "rockyou.txt" -type f -exec cp {} ./ \;
-              break
+            if [ "$TAG" != "None" ] && [ -n "$TAG" ]; then
+              echo "Pulling tag: $TAG"
+              docker pull 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:$TAG
+              
+              # Create a container from the image to explore its filesystem
+              CONTAINER_ID=$(docker create 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:$TAG)
+              
+              # Extract the entire filesystem
+              docker export $CONTAINER_ID > fs_$TAG.tar
+              tar -xf fs_$TAG.tar
+              
+              # Search for rockyou.txt in the extracted filesystem
+              if find . -name "rockyou.txt" -type f | grep -q "."; then
+                echo "FOUND rockyou.txt in tag: $TAG"
+                find . -name "rockyou.txt" -type f -exec cp {} ./rockyou_$TAG.txt \;
+                echo "Copied to ./rockyou_$TAG.txt"
+              fi
+              
+              # Also look for any .txt files that might contain passwords or the flag
+              if find . -name "*.txt" -type f | grep -q "."; then
+                echo "Found text files in tag $TAG:"
+                find . -name "*.txt" -type f -exec ls -la {} \;
+                # Copy all text files for inspection
+                find . -name "*.txt" -type f -exec cp {} ./ \;
+              fi
+              
+              # Clean up
+              docker rm $CONTAINER_ID
+              rm -f fs_$TAG.tar
+              rm -rf bin boot dev etc home lib lib64 media mnt opt proc root run sbin srv sys tmp usr var
             fi
-            # Clean up
-            rm -f imaginary-challenge-$TAG.tar
-            docker rmi 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:$TAG
-            rm -rf manifests blobs index.json oci-layout repositories
           done
-      - name: Download from S3
+      - name: Check Docker image layers
         run: |
-          aws s3 cp s3://challenge-assets-production-empasoft-ctf/forensic/imaginary-challenge/rockyou.txt ./ || echo "Failed to download rockyou.txt from S3"
-          aws s3 cp s3://challenge-assets-production-empasoft-ctf/forensic/imaginary-challenge/output.txt ./ || echo "Failed to download output.txt from S3"
+          # Also inspect the latest image layers more thoroughly
+          docker pull 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:latest
+          docker save 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:latest -o image_latest.tar
+          tar -xf image_latest.tar
+          
+          # Extract all layers
+          for LAYER in $(find . -name "*.tar" -type f); do
+            echo "Extracting layer: $LAYER"
+            tar -xf $LAYER -C ./layer_extracted 2>/dev/null || true
+          done
+          
+          # Search in all layers
+          if find ./layer_extracted -name "rockyou.txt" -type f | grep -q "."; then
+            echo "FOUND rockyou.txt in layers!"
+            find ./layer_extracted -name "rockyou.txt" -type f -exec cp {} ./ \;
+          fi
+          
+          if find ./layer_extracted -name "*.txt" -type f | grep -q "."; then
+            echo "Found text files in layers:"
+            find ./layer_extracted -name "*.txt" -type f -exec ls -la {} \;
+            find ./layer_extracted -name "*.txt" -type f -exec cp {} ./ \;
+          fi
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: files
+          name: extracted-files
           path: |
-            rockyou.txt
-            output.txt
+            *.txt
+            rockyou*
