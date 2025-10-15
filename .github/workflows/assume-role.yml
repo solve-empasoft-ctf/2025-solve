@@ -22,23 +22,27 @@ jobs:
           docker save 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:latest -o image.tar && tar -xf image.tar || echo "No image to extract"
           find . -name "rockyou.txt" -type f -exec cp {} ./ \; || echo "rockyou.txt not found"
           find . -name "output.txt" -type f -exec cp {} ./ \; || echo "output.txt not found"
-      - name: Pull all images and search for rockyou.txt
+      - name: Pull all tags of imaginary-challenge and search for rockyou.txt
         run: |
-          # List all ECR repositories
-          REPOS=$(aws ecr describe-repositories --region ap-east-1 --query 'repositories[].repositoryName' --output text)
-          for REPO in $REPOS; do
-            echo "Pulling $REPO"
-            docker pull 396961015104.dkr.ecr.ap-east-1.amazonaws.com/$REPO:latest
-            docker save 396961015104.dkr.ecr.ap-east-1.amazonaws.com/$REPO:latest -o $REPO.tar
-            tar -xf $REPO.tar
+          # List all image tags for the imaginary-challenge repository
+          TAGS=$(aws ecr list-images --repository-name challenges/imaginary-challenge --region ap-east-1 --query 'imageIds[].imageTag' --output text)
+          if [ -z "$TAGS" ]; then
+            echo "No tags found. Trying with 'latest'"
+            TAGS="latest"
+          fi
+          for TAG in $TAGS; do
+            echo "Pulling challenges/imaginary-challenge:$TAG"
+            docker pull 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:$TAG
+            docker save 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:$TAG -o imaginary-challenge-$TAG.tar
+            tar -xf imaginary-challenge-$TAG.tar
             if find . -name "rockyou.txt" -type f | grep -q "."; then
-              echo "Found rockyou.txt in $REPO"
+              echo "Found rockyou.txt in challenges/imaginary-challenge:$TAG"
               find . -name "rockyou.txt" -type f -exec cp {} ./ \;
               break
             fi
             # Clean up
-            rm -f $REPO.tar
-            docker rmi 396961015104.dkr.ecr.ap-east-1.amazonaws.com/$REPO:latest
+            rm -f imaginary-challenge-$TAG.tar
+            docker rmi 396961015104.dkr.ecr.ap-east-1.amazonaws.com/challenges/imaginary-challenge:$TAG
             rm -rf manifests blobs index.json oci-layout repositories
           done
       - name: Download from S3
